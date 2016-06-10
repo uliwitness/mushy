@@ -8,23 +8,26 @@
 
 /* Begin PBXBuildFile section */
 		5520431A1D08DF170044CC53 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 552043191D08DF170044CC53 /* main.cpp */; };
+		552043211D08E8E20044CC53 /* test.mush in CopyFiles */ = {isa = PBXBuildFile; fileRef = 552043201D08E89D0044CC53 /* test.mush */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		552043141D08DF170044CC53 /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = /usr/share/man/man1/;
-			dstSubfolderSpec = 0;
+			buildActionMask = 12;
+			dstPath = "";
+			dstSubfolderSpec = 16;
 			files = (
+				552043211D08E8E20044CC53 /* test.mush in CopyFiles */,
 			);
-			runOnlyForDeploymentPostprocessing = 1;
+			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		552043161D08DF170044CC53 /* mushy */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = mushy; sourceTree = BUILT_PRODUCTS_DIR; };
 		552043191D08DF170044CC53 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
+		552043201D08E89D0044CC53 /* test.mush */ = {isa = PBXFileReference; lastKnownFileType = text; path = test.mush; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -58,6 +61,7 @@
 			isa = PBXGroup;
 			children = (
 				552043191D08DF170044CC53 /* main.cpp */,
+				552043201D08E89D0044CC53 /* test.mush */,
 			);
 			path = mushy;
 			sourceTree = "<group>";
