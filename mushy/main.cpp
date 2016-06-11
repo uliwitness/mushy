@@ -78,6 +78,8 @@ class funcdesc;
 class varfunccontainer
 {
 public:
+	void	print( size_t indentLevel );
+	
 	map<string,vardesc>			variables;		// Variables that have been defined.
 	map<string,functypedesc>	function_types;	// Forward-declared functions.
 	map<string,funcdesc>		functions;		// Function definitions.
@@ -89,6 +91,34 @@ class typedesc : public varfunccontainer
 public:
 	typedesc( string inName = "" ) : type_name(inName) {}
 	typedesc( const typedesc& inOriginal ) : type_name(inOriginal.type_name), union_name(inOriginal.union_name), template_arguments(inOriginal.template_arguments), class_name(inOriginal.class_name), class_template_arguments(inOriginal.class_template_arguments) {}
+	
+	void	print( size_t indentLevel )
+	{
+		cout << type_name;
+		if( template_arguments.size() > 0 )
+		{
+			cout << "<";
+			for( auto currArg : template_arguments )
+			{
+				currArg.print(indentLevel);
+			}
+			cout << ">";
+		}
+
+		cout << " : " << class_name;
+		if( class_template_arguments.size() > 0 )
+		{
+			cout << "<";
+			for( auto currArg : class_template_arguments )
+			{
+				currArg.print(indentLevel);
+			}
+			cout << ">";
+		}
+		if( union_name.size() > 0 )
+			cout << " @" << union_name;
+		cout << endl;
+	}
 	
 	string				type_name;					// Name of this type.
 	string				union_name;					// Name of the union this type belongs to.
@@ -122,6 +152,16 @@ class functypedesc
 public:
 	functypedesc( string inName = "" ) : func_name(inName) {}
 	
+	void	print( size_t idx )
+	{
+		cout << func_name << "(";
+		for( auto currParam : param_types )
+		{
+			currParam.print( idx );
+		}
+		cout << ")" << endl;
+	}
+	
 	string				func_name;
 	vector<vardesc>		param_types;
 };
@@ -142,22 +182,40 @@ class program : public varfunccontainer
 public:
 	program();
 	
-//	void	print()
-//	{
-//		varfunccontainer::print(0);
-//		for( auto currType : types )
-//		{
-//			currType.second.print(0);
-//		}
-//		for( auto currClass : classes )
-//		{
-//			currClass.second.print(0);
-//		}
-//	}
+	void	print()
+	{
+		varfunccontainer::print(0);
+		for( auto currType : types )
+		{
+			currType.second.print(0);
+		}
+		for( auto currClass : classes )
+		{
+			currClass.second.print(0);
+		}
+	}
 	
 	map<string,typedesc>		types;			// Forward-declared types.
 	map<string,classdesc>		classes;		// Class definitions.
 };
+
+
+void	varfunccontainer::print( size_t indentLevel )
+{
+	for( auto currVar : variables )
+	{
+		currVar.second.print(indentLevel);
+	}
+	for( auto currVar : functions )
+	{
+		currVar.second.print(indentLevel);
+	}
+	for( auto currVar : function_types )
+	{
+		currVar.second.print(indentLevel);
+	}
+}
+
 
 
 program::program()
@@ -209,8 +267,6 @@ bool	is_operator( char currCh )
 		case '/':
 		case '=':
 		case '?':
-		case '\n':
-		case '\r':
 			return true;
 			break;
 		
@@ -304,6 +360,8 @@ state	identifier_state( char currCh, class info& ioInfo )
 	{
 		case ' ':
 		case '\t':
+		case '\r':
+		case '\n':
 			finish_token( ioInfo );
 			return whitespace_state;
 			break;
@@ -399,6 +457,8 @@ state	whitespace_state( char currCh, class info& ioInfo )
 	{
 		case ' ':
 		case '\t':
+		case '\r':
+		case '\n':
 			break;
 		
 		case '"':
@@ -525,10 +585,10 @@ typedesc	parse_type( vector<token>& tokens, vector<token>::iterator& currToken, 
 		
 		currToken++;
 	}
-	else
+	else if( nothingYet )
 		throw runtime_error("Expected type here");
 	
-	if( currToken != tokens.end() && currToken->kind == token::identifier && currToken->text.compare("<") == 0 )
+	if( !nothingYet && currToken != tokens.end() && currToken->kind == token::identifier && currToken->text.compare("<") == 0 )
 	{
 		currToken++;
 		
@@ -557,7 +617,7 @@ typedesc	parse_type( vector<token>& tokens, vector<token>::iterator& currToken, 
 
 void	parse_function_parameters( vector<token>& tokens, vector<token>::iterator& currToken, program& theProgram, funcdesc& currFunction )
 {
-	if( currToken == tokens.end() || (currToken->kind == token::identifier || currToken->text.compare(")") == 0) )
+	if( currToken == tokens.end() || (currToken->kind != token::identifier || currToken->text.compare(")") == 0) )
 		return;
 	
 	while( true )
@@ -650,6 +710,9 @@ void	parse_var_or_function( vector<token>& tokens, vector<token>::iterator& curr
 			
 			currClass.function_types[thingName] = newFunction;
 			currClass.functions[thingName] = newFunction;
+			
+			if( currToken == tokens.end() || currToken->kind != token::identifier || currToken->text.compare("}") != 0 )
+				throw runtime_error( "Expected '}' at end of function body." );
 		}
 	}
 }
@@ -657,13 +720,23 @@ void	parse_var_or_function( vector<token>& tokens, vector<token>::iterator& curr
 
 void	parse_function_body( vector<token>& tokens, vector<token>::iterator& currToken, program& theProgram, funcdesc& currFunction )
 {
-//	while( true )
-//	{
-//		if( currToken == tokens.end() || (currToken->kind == token::identifier && currToken->text.compare("}") == 0 ) )
-//			break;
-//		
-//		
-//	}
+	while( true )
+	{
+		if( currToken == tokens.end() || (currToken->kind == token::identifier && currToken->text.compare("}") == 0 ) )
+			break;
+		
+		if( currToken->kind == token::identifier && currToken->text.compare("return") == 0 )
+		{
+			currToken++;
+			
+			command	currCommand( "return" );
+			expression	expr = parse_expression( tokens, currToken, theProgram, currFunction, currCommand );
+			currCommand.parameters.push_back( expr );
+			currFunction.commands.push_back( currCommand );
+		}
+		else
+			throw runtime_error( "Unknown element in function body." );
+	}
 }
 
 
@@ -738,12 +811,15 @@ void	parse_top_level_construct( vector<token>& tokens, vector<token>::iterator& 
 					currToken++;
 					if( currToken == tokens.end() )
 						throw runtime_error( "Expected method declaration or definition after 'override'." );
+					isOverride = true;
 				}
 				parse_var_or_function( tokens, currToken, theProgram, newClass, isOverride );
 			}
 			
 			if( currToken == tokens.end() || currToken->kind != token::identifier || currToken->text.compare("}") != 0 )
 				throw runtime_error( "Expected } at end of class/struct." );
+			
+			currToken++;
 		}
 		else
 		{
@@ -789,7 +865,7 @@ int main( int argc, const char * argv[] )
 		result = EXIT_FAILURE;
 	}
 	
-//	theProgram.print();
+	theProgram.print();
 	
     return result;
 }
