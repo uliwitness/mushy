@@ -32,16 +32,18 @@ public:
 	typedef enum {
 		whitespace,
 		identifier,
+		operator_identifier,
 		string,
 		character,
 		number,
 		integer
 	} token_kind;
 	
-	token() : kind(whitespace) {  }
+	token() : kind(whitespace), offset(0) {  }
 	
 	token_kind		kind;
 	std::string		text;
+	size_t			offset;
 };
 
 
@@ -147,6 +149,25 @@ public:
 };
 
 
+class term
+{
+public:
+	typedef enum {
+		string,
+		character,
+		integer,
+		number,
+		function_call
+	} term_type;
+
+	term( std::string inName = "" ) : func_name(inName), kind(function_call) {}
+	
+	term_type			kind;
+	std::string			func_name;
+	vector<term>		parameters;
+};
+
+
 class functypedesc
 {
 public:
@@ -171,6 +192,8 @@ class funcdesc : public functypedesc
 {
 public:
 	funcdesc( string inName = "" ) : functypedesc(inName), is_pure_virtual(false) {}
+	
+	vector<term>	commands;
 	
 	bool	is_pure_virtual;
 	bool	is_override;
@@ -232,6 +255,10 @@ program::program()
 
 void	finish_token( info& ioInfo )
 {
+	if( ioInfo.curr_token.kind != token::string && ioInfo.curr_token.kind != token::character
+		&& ioInfo.curr_token.text.length() == 0 )
+		return;
+	
 	if( ioInfo.curr_token.kind != token::whitespace )
 	{
 		ioInfo.tokens.push_back( ioInfo.curr_token );
@@ -382,9 +409,10 @@ state	identifier_state( char currCh, class info& ioInfo )
 			if( is_operator(currCh) )
 			{
 				finish_token( ioInfo );
-				ioInfo.curr_token.kind = token::identifier;
+				ioInfo.curr_token.kind = token::operator_identifier;
 				ioInfo.curr_token.text.append( 1, currCh );
 				finish_token( ioInfo );
+				ioInfo.curr_token.kind = token::identifier;
 			}
 			else
 				ioInfo.curr_token.text.append( 1, currCh );
@@ -481,9 +509,10 @@ state	whitespace_state( char currCh, class info& ioInfo )
 			if( is_operator(currCh) )
 			{
 				finish_token( ioInfo );
-				ioInfo.curr_token.kind = token::identifier;
+				ioInfo.curr_token.kind = token::operator_identifier;
 				ioInfo.curr_token.text.append( 1, currCh );
 				finish_token( ioInfo );
+				ioInfo.curr_token.kind = token::identifier;
 			}
 			else
 			{
@@ -510,6 +539,7 @@ vector<token>	tokenize( istream& inStream )
 		if( inStream.eof() )
 			break;
 		currState = currState( currCh, currInfo );
+		currInfo.curr_token.offset++;
 	}
 	finish_token( currInfo );
 	
@@ -588,7 +618,7 @@ typedesc	parse_type( vector<token>& tokens, vector<token>::iterator& currToken, 
 	else if( nothingYet )
 		throw runtime_error("Expected type here");
 	
-	if( !nothingYet && currToken != tokens.end() && currToken->kind == token::identifier && currToken->text.compare("<") == 0 )
+	if( !nothingYet && currToken != tokens.end() && currToken->kind == token::operator_identifier && currToken->text.compare("<") == 0 )
 	{
 		currToken++;
 		
@@ -599,12 +629,12 @@ typedesc	parse_type( vector<token>& tokens, vector<token>::iterator& currToken, 
 			{
 				if( currToken == tokens.end() )
 					throw runtime_error("Expected > here, found end of file.");
-				else if( currToken->kind == token::identifier && currToken->text.compare(">") == 0 )
+				else if( currToken->kind == token::operator_identifier && currToken->text.compare(">") == 0 )
 				{
 					currToken++;
 					break;
 				}
-				else if( currToken->kind != token::identifier || currToken->text.compare(",") != 0 )
+				else if( currToken->kind != token::operator_identifier || currToken->text.compare(",") != 0 )
 					currToken++;
 			}
 			theType.template_arguments.push_back(currTemplateType);
@@ -617,7 +647,7 @@ typedesc	parse_type( vector<token>& tokens, vector<token>::iterator& currToken, 
 
 void	parse_function_parameters( vector<token>& tokens, vector<token>::iterator& currToken, program& theProgram, funcdesc& currFunction )
 {
-	if( currToken == tokens.end() || (currToken->kind != token::identifier || currToken->text.compare(")") == 0) )
+	if( currToken == tokens.end() || (currToken->kind == token::operator_identifier && currToken->text.compare(")") == 0) )
 		return;
 	
 	while( true )
@@ -633,7 +663,7 @@ void	parse_function_parameters( vector<token>& tokens, vector<token>::iterator& 
 		currFunction.param_types.push_back( theVar );
 		currToken++;
 
-		if( currToken == tokens.end() || currToken->kind != token::identifier )
+		if( currToken == tokens.end() || currToken->kind != token::operator_identifier )
 			throw runtime_error("Expected ',' or ')' here.");
 		
 		if( currToken->text.compare(")") == 0 )	// End of list.
@@ -655,7 +685,7 @@ void	parse_var_or_function( vector<token>& tokens, vector<token>::iterator& curr
 	string	thingName = currToken->text;
 	currToken++;
 	
-	if( currToken == tokens.end() || currToken->kind != token::identifier )
+	if( currToken == tokens.end() || currToken->kind != token::operator_identifier )
 		throw runtime_error( "Expected semicolon after variable name, or opening bracket after function name." );
 	
 	if( !isOverride && currToken->text.compare(";") == 0 )	// Variable!
@@ -674,11 +704,11 @@ void	parse_var_or_function( vector<token>& tokens, vector<token>::iterator& curr
 		
 		parse_function_parameters( tokens, currToken, theProgram, newFunction );
 		
-		if( currToken == tokens.end() || currToken->kind != token::identifier || currToken->text.compare(")") != 0 )
+		if( currToken == tokens.end() || currToken->kind != token::operator_identifier || currToken->text.compare(")") != 0 )
 			throw runtime_error( "Expected ')' at end of function parameter list." );
 		currToken++;
 		
-		if( currToken == tokens.end() || currToken->kind != token::identifier )
+		if( currToken == tokens.end() || currToken->kind != token::operator_identifier )
 			throw runtime_error( "Expected ';' or '{' after function parameter list." );
 		if( currToken->text.compare(";") == 0 )
 		{
@@ -694,7 +724,7 @@ void	parse_var_or_function( vector<token>& tokens, vector<token>::iterator& curr
 
 			currToken++;
 			
-			if( currToken == tokens.end() || currToken->kind != token::identifier || currToken->text.compare(";") != 0 )
+			if( currToken == tokens.end() || currToken->kind != token::operator_identifier || currToken->text.compare(";") != 0 )
 				throw runtime_error( "Expected ';' after pure virtual function declaration." );
 			
 			newFunction.is_pure_virtual = true;
@@ -711,10 +741,53 @@ void	parse_var_or_function( vector<token>& tokens, vector<token>::iterator& curr
 			currClass.function_types[thingName] = newFunction;
 			currClass.functions[thingName] = newFunction;
 			
-			if( currToken == tokens.end() || currToken->kind != token::identifier || currToken->text.compare("}") != 0 )
+			if( currToken == tokens.end() || currToken->kind != token::operator_identifier || currToken->text.compare("}") != 0 )
 				throw runtime_error( "Expected '}' at end of function body." );
 		}
 	}
+}
+
+
+term	parse_expression( vector<token>& tokens, vector<token>::iterator& currToken, program& theProgram, funcdesc& currFunction )
+{
+	term		result;
+	if( currToken == tokens.end() )
+		return result;
+	
+	if( currToken->kind == token::string )
+	{
+		result.kind = term::string;
+		result.func_name = currToken->text;
+		currToken++;
+	}
+	else if( currToken->kind == token::character )
+	{
+		result.kind = term::character;
+		result.func_name = currToken->text;
+		currToken++;
+	}
+	else if( currToken->kind == token::integer )
+	{
+		result.kind = term::integer;
+		result.func_name = currToken->text;
+		currToken++;
+	}
+	else if( currToken->kind == token::number )
+	{
+		result.kind = term::number;
+		result.func_name = currToken->text;
+		currToken++;
+	}
+	else if( currToken->kind == token::operator_identifier )
+	{
+		
+	}
+	else if( currToken->kind == token::identifier )
+	{
+		
+	}
+	
+	return result;
 }
 
 
@@ -722,20 +795,23 @@ void	parse_function_body( vector<token>& tokens, vector<token>::iterator& currTo
 {
 	while( true )
 	{
-		if( currToken == tokens.end() || (currToken->kind == token::identifier && currToken->text.compare("}") == 0 ) )
+		if( currToken == tokens.end() || (currToken->kind == token::operator_identifier && currToken->text.compare("}") == 0 ) )
 			break;
 		
 		if( currToken->kind == token::identifier && currToken->text.compare("return") == 0 )
 		{
 			currToken++;
 			
-			command	currCommand( "return" );
-			expression	expr = parse_expression( tokens, currToken, theProgram, currFunction, currCommand );
+			term	currCommand( "return" );
+			term	expr = parse_expression( tokens, currToken, theProgram, currFunction );
 			currCommand.parameters.push_back( expr );
 			currFunction.commands.push_back( currCommand );
 		}
 		else
-			throw runtime_error( "Unknown element in function body." );
+		{
+			term	expr = parse_expression( tokens, currToken, theProgram, currFunction );
+			currFunction.commands.push_back( expr );
+		}
 	}
 }
 
@@ -759,7 +835,7 @@ void	parse_top_level_construct( vector<token>& tokens, vector<token>::iterator& 
 		
 		currToken++;
 		
-		if( currToken->kind == token::identifier && currToken->text.compare(":") == 0 )
+		if( currToken->kind == token::operator_identifier && currToken->text.compare(":") == 0 )
 		{
 			currToken++;
 			
@@ -791,18 +867,18 @@ void	parse_top_level_construct( vector<token>& tokens, vector<token>::iterator& 
 		newClass.class_name = baseClassName;
 		newClass.union_name = unionName;
 
-		if( mayBeDeclaration && currToken != tokens.end() && currToken->kind == token::identifier && currToken->text.compare(";") == 0 )
+		if( mayBeDeclaration && currToken != tokens.end() && currToken->kind == token::operator_identifier && currToken->text.compare(";") == 0 )
 		{	// declaration:
 			currToken++;
 			isDeclaration = true;
 		}
-		else if( currToken != tokens.end() && (currToken->kind == token::identifier && currToken->text.compare("{") == 0) )
+		else if( currToken != tokens.end() && (currToken->kind == token::operator_identifier && currToken->text.compare("{") == 0) )
 		{	// definition:
 			currToken++;
 			
 			while( true )
 			{
-				if( currToken == tokens.end() || (currToken->kind == token::identifier && currToken->text.compare("}") == 0 ) )
+				if( currToken == tokens.end() || (currToken->kind == token::operator_identifier && currToken->text.compare("}") == 0 ) )
 					break;
 				
 				bool	isOverride = false;
@@ -816,7 +892,7 @@ void	parse_top_level_construct( vector<token>& tokens, vector<token>::iterator& 
 				parse_var_or_function( tokens, currToken, theProgram, newClass, isOverride );
 			}
 			
-			if( currToken == tokens.end() || currToken->kind != token::identifier || currToken->text.compare("}") != 0 )
+			if( currToken == tokens.end() || currToken->kind != token::operator_identifier || currToken->text.compare("}") != 0 )
 				throw runtime_error( "Expected } at end of class/struct." );
 			
 			currToken++;
