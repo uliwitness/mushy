@@ -1,3 +1,12 @@
+//
+//  test.mush
+//  mushy
+//
+//  Created by Uli Kusterer on 08/06/16.
+//  Copyright © 2016 Uli Kusterer. All rights reserved.
+//
+
+
 class variant_type
 {
 	long long	get_as_number() = null;
