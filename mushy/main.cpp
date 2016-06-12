@@ -259,8 +259,8 @@ public:
 		function_call,
 		global_variable,
 		variable,
-		instance_variable,
-		parameter
+		parameter,
+		field
 	} term_type;
 
 	term( std::string inName = "" ) : func_name(inName), kind(function_call) {}
@@ -296,14 +296,14 @@ public:
 				cout << " )";
 				break;
 			}
+			case field:
+				cout << indent(indentLevel) << func_name;
+				break;
 			case variable:
 				cout << indent(indentLevel) << func_name;
 				break;
 			case global_variable:
 				cout << indent(indentLevel) << "@global(" << func_name << ")";
-				break;
-			case instance_variable:
-				cout << indent(indentLevel) << "this." << func_name;
 				break;
 			case parameter:
 				cout << indent(indentLevel) << "@parameter(" << func_name << ")";
@@ -1042,7 +1042,16 @@ term	parse_term( vector<token>& tokens, vector<token>::iterator& currToken, prog
 		{
 			foundVar = currClass.variables.find( currToken->text );
 			if( foundVar != currClass.variables.end() )
-				result.kind = term::instance_variable;
+			{
+				result.kind = term::function_call;
+				result.func_name = ".";
+				result.parameters.push_back( term("this") );
+				result.parameters[0].kind = term::parameter;
+				result.parameters.push_back( term(currToken->text) );
+				result.parameters[1].kind = term::field;
+				currToken++;
+				return result;
+			}
 		}
 
 		if( result.kind == term::function_call )
