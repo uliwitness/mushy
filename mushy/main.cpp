@@ -24,8 +24,8 @@ class state	string_state( char currCh, class info& ioInfo );
 class state	character_state( char currCh, class info& ioInfo );
 class state	multi_line_comment_state( char currCh, class info& ioInfo );
 
-void		parse_function_body( vector<class token>& tokens, vector<class token>::iterator& currToken, class program& theProgram, class funcdesc& currFunction );
-class term	parse_expression( vector<class token>& tokens, vector<class token>::iterator& currToken, class program& theProgram, class funcdesc& currFunction );
+void		parse_function_body( vector<class token>& tokens, vector<class token>::iterator& currToken, class program& theProgram, class classdesc& currClass, class funcdesc& currFunction );
+class term	parse_expression( vector<class token>& tokens, vector<class token>::iterator& currToken, class program& theProgram, class classdesc& currClass, class funcdesc& currFunction );
 
 
 #define PE_TOKEN_NAME	token_text(tokens,currToken)
@@ -64,7 +64,7 @@ public:
 		whitespace,
 		identifier,
 		operator_identifier,
-		string,
+		quoted_string,
 		character,
 		number,
 		integer
@@ -165,48 +165,7 @@ public:
 	typedesc( string inName = "" ) : type_name(inName) {}
 	typedesc( const typedesc& inOriginal ) : type_name(inOriginal.type_name), union_name(inOriginal.union_name), template_arguments(inOriginal.template_arguments), class_name(inOriginal.class_name), class_template_arguments(inOriginal.class_template_arguments) { variables = inOriginal.variables; function_types = inOriginal.function_types; functions = inOriginal.functions; }
 	
-	virtual void	print( size_t indentLevel ) const override
-	{
-		cout << indent(indentLevel) << type_name;
-		if( template_arguments.size() > 0 )
-		{
-			cout << "<";
-			bool	isFirst = true;
-			for( auto currArg : template_arguments )
-			{
-				if( !isFirst )
-					cout << ", ";
-				else
-					isFirst = false;
-				currArg.print(0);
-			}
-			cout << ">";
-		}
-		
-		if( class_name.length() > 0 )
-		{
-			cout << " : " << class_name;
-			if( class_template_arguments.size() > 0 )
-			{
-				cout << "<";
-				bool	isFirst = true;
-				for( auto currArg : class_template_arguments )
-				{
-					if( !isFirst )
-						cout << ", ";
-					else
-						isFirst = false;
-					currArg.print(indentLevel);
-				}
-				cout << ">";
-			}
-		}
-		if( union_name.size() > 0 )
-			cout << " @" << union_name;
-		if( variables.size() > 0 || functions.size() > 0 || function_types.size() > 0 )
-			cout << endl;
-		varfunccontainer::print( indentLevel +1 );
-	}
+	virtual void	print( size_t indentLevel ) const override;
 	
 	string				type_name;					// Name of this type.
 	string				union_name;					// Name of the union this type belongs to.
@@ -214,6 +173,50 @@ public:
 	string				class_name;					// Name of the base class for this type.
 	vector<typedesc>	class_template_arguments;	// Types for all template arguments to the base class.
 };
+
+
+void	typedesc::print( size_t indentLevel ) const
+{
+	cout << indent(indentLevel) << type_name;
+	if( template_arguments.size() > 0 )
+	{
+		cout << "<";
+		bool	isFirst = true;
+		for( auto currArg : template_arguments )
+		{
+			if( !isFirst )
+				cout << ", ";
+			else
+				isFirst = false;
+			currArg.print(0);
+		}
+		cout << ">";
+	}
+	
+	if( class_name.length() > 0 )
+	{
+		cout << " : " << class_name;
+		if( class_template_arguments.size() > 0 )
+		{
+			cout << "<";
+			bool	isFirst = true;
+			for( auto currArg : class_template_arguments )
+			{
+				if( !isFirst )
+					cout << ", ";
+				else
+					isFirst = false;
+				currArg.print(indentLevel);
+			}
+			cout << ">";
+		}
+	}
+	if( union_name.size() > 0 )
+		cout << " @" << union_name;
+	if( variables.size() > 0 || functions.size() > 0 || function_types.size() > 0 )
+		cout << endl;
+	varfunccontainer::print( indentLevel +1 );
+}
 
 
 class classdesc : public typedesc
@@ -231,28 +234,33 @@ public:
 	vardesc( string inName, const typedesc& inType ) : typedesc(inType), var_name(inName) {}
 	vardesc() : typedesc("") {}
 	
-	virtual void	print( size_t indentLevel ) const override
-	{
-		cout << indent( indentLevel );
-		typedesc::print(0);
-		cout << "\t" << var_name;
-	}
+	virtual void	print( size_t indentLevel ) const override;
 	
 	string	var_name;
 };
+
+
+void	vardesc::print( size_t indentLevel ) const
+{
+	cout << indent( indentLevel );
+	typedesc::print(0);
+	cout << "\t" << var_name;
+}
 
 
 class term
 {
 public:
 	typedef enum {
-		string,
+		quoted_string,
 		character,
 		integer,
 		number,
 		function_call,
+		global_variable,
 		variable,
-		instance_variable
+		instance_variable,
+		parameter
 	} term_type;
 
 	term( std::string inName = "" ) : func_name(inName), kind(function_call) {}
@@ -261,7 +269,7 @@ public:
 	{
 		switch( kind )
 		{
-			case string:
+			case quoted_string:
 				cout << indent(indentLevel) << "\"" << func_name << "\"";
 				break;
 			case character:
@@ -291,8 +299,14 @@ public:
 			case variable:
 				cout << indent(indentLevel) << func_name;
 				break;
+			case global_variable:
+				cout << indent(indentLevel) << "@global(" << func_name << ")";
+				break;
 			case instance_variable:
-				cout << indent(indentLevel) << "self." << func_name;
+				cout << indent(indentLevel) << "this." << func_name;
+				break;
+			case parameter:
+				cout << indent(indentLevel) << "@parameter(" << func_name << ")";
 				break;
 		}
 	}
@@ -359,26 +373,29 @@ class program : public varfunccontainer
 public:
 	program();
 	
-	virtual void	print( size_t indentLevel ) const override
-	{
-		varfunccontainer::print( indentLevel );
-		cout << "TYPES:" << endl;
-		for( auto currType : types )
-		{
-			currType.second.print( indentLevel +1 );
-			cout << endl;
-		}
-		cout << "CLASSES:" << endl;
-		for( const pair<string,classdesc>& currClass : classes )
-		{
-			currClass.second.print( indentLevel +1 );
-		}
-	}
+	virtual void	print( size_t indentLevel ) const override;
 	
 	map<string,typedesc>		types;			// Forward-declared types.
 	map<string,classdesc>		classes;		// Class definitions.
 	map<string,size_t>			binary_operator_priorities;
 };
+
+
+void	program::print( size_t indentLevel ) const
+{
+	varfunccontainer::print( indentLevel );
+	cout << "TYPES:" << endl;
+	for( auto currType : types )
+	{
+		currType.second.print( indentLevel +1 );
+		cout << endl;
+	}
+	cout << "CLASSES:" << endl;
+	for( const pair<string,classdesc>& currClass : classes )
+	{
+		currClass.second.print( indentLevel +1 );
+	}
+}
 
 
 void	varcontainer::print( size_t indentLevel ) const
@@ -435,7 +452,7 @@ program::program()
 
 void	finish_token( info& ioInfo )
 {
-	if( ioInfo.curr_token.kind != token::string && ioInfo.curr_token.kind != token::character
+	if( ioInfo.curr_token.kind != token::quoted_string && ioInfo.curr_token.kind != token::character
 		&& ioInfo.curr_token.text.length() == 0 )
 		return;
 	
@@ -576,7 +593,7 @@ state	identifier_state( char currCh, class info& ioInfo )
 		
 		case '"':
 			finish_token( ioInfo );
-			ioInfo.curr_token.kind = token::string;
+			ioInfo.curr_token.kind = token::quoted_string;
 			return string_state;
 			break;
 
@@ -669,7 +686,7 @@ state	whitespace_state( char currCh, class info& ioInfo )
 		
 		case '"':
 			finish_token( ioInfo );
-			ioInfo.curr_token.kind = token::string;
+			ioInfo.curr_token.kind = token::quoted_string;
 			return string_state;
 			break;
 
@@ -872,7 +889,7 @@ void	parse_function_parameters( vector<token>& tokens, vector<token>::iterator& 
 	}
 }
 
-void	parse_var_or_function( vector<token>& tokens, vector<token>::iterator& currToken, program& theProgram, varfunccontainer& currClass, bool isOverride )
+void	parse_var_or_function( vector<token>& tokens, vector<token>::iterator& currToken, program& theProgram, varfunccontainer& container, classdesc& currClass, bool isOverride )
 {
 	typedesc	theType = parse_type( tokens, currToken,  theProgram );
 	
@@ -887,9 +904,9 @@ void	parse_var_or_function( vector<token>& tokens, vector<token>::iterator& curr
 	
 	if( !isOverride && currToken->text.compare(";") == 0 )	// Variable!
 	{
-		if( currClass.variables.find(thingName) != currClass.variables.end() )
-			PE_ERROR( "A global named " << thingName << "already exists" );
-		currClass.variables[thingName] = vardesc(thingName, theType);
+		if( container.variables.find(thingName) != container.variables.end() )
+			PE_ERROR( "A variable named " << thingName << "already exists" );
+		container.variables[thingName] = vardesc(thingName, theType);
 		currToken++;
 	}
 	else if( currToken->text.compare("(") == 0 )	// Function!
@@ -910,7 +927,7 @@ void	parse_var_or_function( vector<token>& tokens, vector<token>::iterator& curr
 			PE_ERROR( "Expected ';' or '{' after function parameter list, found " << PE_TOKEN_NAME );
 		if( currToken->text.compare(";") == 0 )
 		{
-			currClass.function_types[thingName] = newFunction;
+			container.function_types[thingName] = newFunction;
 			currToken ++;
 		}
 		else if( currToken->text.compare("=") == 0 )
@@ -926,18 +943,18 @@ void	parse_var_or_function( vector<token>& tokens, vector<token>::iterator& curr
 				PE_ERROR( "Expected ';' after pure virtual function declaration, found " << PE_TOKEN_NAME );
 			
 			newFunction.is_pure_virtual = true;
-			currClass.function_types[thingName] = newFunction;
-			currClass.functions[thingName] = newFunction;
+			container.function_types[thingName] = newFunction;
+			container.functions[thingName] = newFunction;
 			currToken ++;
 		}
 		else if( currToken->text.compare("{") == 0 )
 		{
 			currToken ++;
 			
-			parse_function_body( tokens, currToken, theProgram, newFunction );
+			parse_function_body( tokens, currToken, theProgram, currClass, newFunction );
 			
-			currClass.function_types[thingName] = newFunction;
-			currClass.functions[thingName] = newFunction;
+			container.function_types[thingName] = newFunction;
+			container.functions[thingName] = newFunction;
 			
 			if( currToken == tokens.end() || currToken->kind != token::operator_identifier || currToken->text.compare("}") != 0 )
 				PE_ERROR( "Expected '}' at end of function body, found " << PE_TOKEN_NAME );
@@ -948,15 +965,15 @@ void	parse_var_or_function( vector<token>& tokens, vector<token>::iterator& curr
 }
 
 
-term	parse_term( vector<token>& tokens, vector<token>::iterator& currToken, program& theProgram, funcdesc& currFunction )
+term	parse_term( vector<token>& tokens, vector<token>::iterator& currToken, program& theProgram, classdesc& currClass, funcdesc& currFunction )
 {
 	term		result;
 	if( currToken == tokens.end() )
 		return result;
 	
-	if( currToken->kind == token::string )
+	if( currToken->kind == token::quoted_string )
 	{
-		result.kind = term::string;
+		result.kind = term::quoted_string;
 		result.func_name = currToken->text;
 		currToken++;
 	}
@@ -982,7 +999,7 @@ term	parse_term( vector<token>& tokens, vector<token>::iterator& currToken, prog
 	{
 		currToken++;
 		
-		result = parse_expression( tokens, currToken, theProgram, currFunction );
+		result = parse_expression( tokens, currToken, theProgram, currClass, currFunction );
 		
 		if( currToken->kind != token::operator_identifier || currToken->text != ")" )
 			PE_ERROR( "Expected ')' at end of bracketed expression, found " << PE_TOKEN_NAME );
@@ -993,11 +1010,48 @@ term	parse_term( vector<token>& tokens, vector<token>::iterator& currToken, prog
 	{
 		result.func_name = currToken->text;
 		currToken++;
-		result.parameters.push_back( parse_term( tokens, currToken, theProgram, currFunction ) );
+		result.parameters.push_back( parse_term( tokens, currToken, theProgram, currClass, currFunction ) );
 	}
 	else if( currToken->kind == token::identifier )
 	{
-		result.kind = term::variable;
+		if( currToken->text == "this" )
+		{
+			result.kind = term::parameter;
+			result.func_name = "this";
+			currToken++;
+			return result;
+		}
+		
+		auto	foundVar = currFunction.variables.find( currToken->text );
+		if( foundVar != currFunction.variables.end() )
+			result.kind = term::variable;
+		
+		if( result.kind == term::function_call )
+		{
+			for( auto currParam : currFunction.param_types )
+			{
+				if( currParam.var_name == currToken->text )
+				{
+					result.kind = term::parameter;
+					break;
+				}
+			}
+		}
+
+		if( result.kind == term::function_call )
+		{
+			foundVar = currClass.variables.find( currToken->text );
+			if( foundVar != currClass.variables.end() )
+				result.kind = term::instance_variable;
+		}
+
+		if( result.kind == term::function_call )
+		{
+			foundVar = theProgram.variables.find( currToken->text );
+			if( foundVar != theProgram.variables.end() )
+				result.kind = term::global_variable;
+		}
+		
 		result.func_name = currToken->text;
 		currToken++;
 	}
@@ -1008,13 +1062,13 @@ term	parse_term( vector<token>& tokens, vector<token>::iterator& currToken, prog
 }
 
 
-term	parse_expression( vector<token>& tokens, vector<token>::iterator& currToken, program& theProgram, funcdesc& currFunction )
+term	parse_expression( vector<token>& tokens, vector<token>::iterator& currToken, program& theProgram, classdesc& currClass, funcdesc& currFunction )
 {
 	term		result;
 	if( currToken == tokens.end() )
 		return result;
 	
-	term	argOne = parse_term( tokens, currToken, theProgram, currFunction );
+	term	argOne = parse_term( tokens, currToken, theProgram, currClass, currFunction );
 	if( currToken == tokens.end() )
 		return argOne;
 	
@@ -1042,7 +1096,7 @@ term	parse_expression( vector<token>& tokens, vector<token>::iterator& currToken
 			term	currOp( opName );
 			currOp.kind = term::function_call;
 			currOp.parameters.push_back( rightmost->parameters[1] );
-			currOp.parameters.push_back( parse_term( tokens, currToken, theProgram, currFunction ) );
+			currOp.parameters.push_back( parse_term( tokens, currToken, theProgram, currClass, currFunction ) );
 			rightmost->parameters[1] = currOp;
 			rightmost = &rightmost->parameters[1];
 		}
@@ -1051,7 +1105,7 @@ term	parse_expression( vector<token>& tokens, vector<token>::iterator& currToken
 			term	currOp( opName );
 			currOp.kind = term::function_call;
 			currOp.parameters.push_back( *rightmost );
-			currOp.parameters.push_back( parse_term( tokens, currToken, theProgram, currFunction ) );
+			currOp.parameters.push_back( parse_term( tokens, currToken, theProgram, currClass, currFunction ) );
 			*rightmost = currOp;
 			rightmost = &rightmost->parameters[1];
 		}
@@ -1061,7 +1115,7 @@ term	parse_expression( vector<token>& tokens, vector<token>::iterator& currToken
 }
 
 
-void	parse_function_body( vector<token>& tokens, vector<token>::iterator& currToken, program& theProgram, funcdesc& currFunction )
+void	parse_function_body( vector<token>& tokens, vector<token>::iterator& currToken, program& theProgram, classdesc& currClass, funcdesc& currFunction )
 {
 	while( true )
 	{
@@ -1073,7 +1127,7 @@ void	parse_function_body( vector<token>& tokens, vector<token>::iterator& currTo
 			currToken++;
 			
 			term	currCommand( "return" );
-			term	expr = parse_expression( tokens, currToken, theProgram, currFunction );
+			term	expr = parse_expression( tokens, currToken, theProgram, currClass, currFunction );
 			currCommand.parameters.push_back( expr );
 			currFunction.commands.push_back( currCommand );
 		}
@@ -1102,7 +1156,7 @@ void	parse_function_body( vector<token>& tokens, vector<token>::iterator& currTo
 					PE_ERROR( "Expected ';' or '=' here, found " << PE_TOKEN_NAME );
 				currToken++;
 			}
-			term	expr = parse_expression( tokens, currToken, theProgram, currFunction );
+			term	expr = parse_expression( tokens, currToken, theProgram, currClass, currFunction );
 			if( varName.length() != 0 )
 			{
 				term	assignmentStmt("=");
@@ -1196,7 +1250,7 @@ void	parse_top_level_construct( vector<token>& tokens, vector<token>::iterator& 
 						PE_ERROR( "Expected method declaration or definition after 'override', found " << PE_TOKEN_NAME );
 					isOverride = true;
 				}
-				parse_var_or_function( tokens, currToken, theProgram, newClass, isOverride );
+				parse_var_or_function( tokens, currToken, theProgram, newClass, newClass, isOverride );
 			}
 			
 			if( currToken == tokens.end() || currToken->kind != token::operator_identifier || currToken->text.compare("}") != 0 )
@@ -1219,7 +1273,8 @@ void	parse_top_level_construct( vector<token>& tokens, vector<token>::iterator& 
 	}
 	else
 	{
-		parse_var_or_function( tokens, currToken, theProgram, theProgram, false );
+		classdesc	dummy_class("__dummy_class");
+		parse_var_or_function( tokens, currToken, theProgram, theProgram, dummy_class, false );
 	}
 }
 
