@@ -443,11 +443,16 @@ program::program()
 	types["void"] = typedesc("void");
 	
 	binary_operator_priorities["="] = 1000;
+	binary_operator_priorities["&&"] = 2000;
+	binary_operator_priorities["||"] = 3000;
+	binary_operator_priorities["=="] = 4000;
+	binary_operator_priorities["!="] = 4000;
 	binary_operator_priorities["+"] = 5000;
 	binary_operator_priorities["-"] = 5000;
 	binary_operator_priorities["*"] = 6000;
 	binary_operator_priorities["/"] = 6000;
 	binary_operator_priorities["%"] = 6000;
+	binary_operator_priorities["."] = 9000;
 }
 
 void	finish_token( info& ioInfo )
@@ -491,6 +496,7 @@ bool	is_operator( char currCh )
 		case '+':
 		case '/':
 		case '=':
+		case '|':
 		case '?':
 			return true;
 			break;
@@ -1071,6 +1077,31 @@ term	parse_term( vector<token>& tokens, vector<token>::iterator& currToken, prog
 }
 
 
+string	parse_longest_binary_operator_name( vector<token>& tokens, vector<token>::iterator& currToken, program& theProgram )
+{
+	string						opName;
+	string						prevOpName;
+	vector<token>::iterator		prevToken = currToken;
+	
+	while( true )
+	{
+		if( currToken == tokens.end() || currToken->kind != token::operator_identifier )
+			break;
+
+		opName.append( currToken->text );
+		currToken++;
+		if( theProgram.binary_operator_priorities.find(opName) != theProgram.binary_operator_priorities.end() )
+		{
+			prevOpName = opName;
+			prevToken = currToken;
+		}
+	}
+	
+	currToken = prevToken;
+	return prevOpName;
+}
+
+
 term	parse_expression( vector<token>& tokens, vector<token>::iterator& currToken, program& theProgram, classdesc& currClass, funcdesc& currFunction )
 {
 	term		result;
@@ -1081,9 +1112,8 @@ term	parse_expression( vector<token>& tokens, vector<token>::iterator& currToken
 	if( currToken == tokens.end() )
 		return argOne;
 	
-	size_t		currPriority = priority_for_binary_operator(theProgram,currToken->text);
-	if( currPriority == 0 )
-		return argOne;
+	string		opName;
+	size_t		currPriority;
 	
 	// Set up a "fake" operator to start with so loop below can treat it
 	//	just like any other operator to its left. This operator is lowest
@@ -1095,11 +1125,13 @@ term	parse_expression( vector<token>& tokens, vector<token>::iterator& currToken
 	
 	term*	rightmost = &result;
 
-	while( (currPriority = priority_for_binary_operator(theProgram,currToken->text)) > 0 )
+	while( true )
 	{
-		size_t	prevPriority = priority_for_binary_operator( theProgram,rightmost->func_name );
-		string	opName = currToken->text;
-		currToken++;
+		opName = parse_longest_binary_operator_name( tokens, currToken, theProgram );
+		if( opName.length() == 0 )
+			break;
+		currPriority = priority_for_binary_operator( theProgram, opName );
+		size_t	prevPriority = priority_for_binary_operator( theProgram, rightmost->func_name );
 		if( currPriority > prevPriority )
 		{
 			term	currOp( opName );
