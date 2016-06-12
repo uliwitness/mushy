@@ -212,7 +212,7 @@ void	typedesc::print( size_t indentLevel ) const
 		}
 	}
 	if( union_name.size() > 0 )
-		cout << " @" << union_name;
+		cout << " @union " << union_name;
 	if( variables.size() > 0 || functions.size() > 0 || function_types.size() > 0 )
 		cout << endl;
 	varfunccontainer::print( indentLevel +1 );
