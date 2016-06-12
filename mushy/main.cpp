@@ -260,7 +260,8 @@ public:
 		global_variable,
 		variable,
 		parameter,
-		field
+		field,
+		class_object
 	} term_type;
 
 	term( std::string inName = "" ) : func_name(inName), kind(function_call) {}
@@ -307,6 +308,9 @@ public:
 				break;
 			case parameter:
 				cout << indent(indentLevel) << "@parameter(" << func_name << ")";
+				break;
+			case class_object:
+				cout << indent(indentLevel) << "@class(" << func_name << ")";
 				break;
 		}
 	}
@@ -1030,7 +1034,16 @@ term	parse_term( vector<token>& tokens, vector<token>::iterator& currToken, prog
 		if( currToken->text == "this" )
 		{
 			result.kind = term::parameter;
-			result.func_name = "this";
+			result.func_name = currToken->text;
+			currToken++;
+			return result;
+		}
+		
+		auto	foundClass = theProgram.classes.find( currToken->text );
+		if( foundClass != theProgram.classes.end() )
+		{
+			result.kind = term::class_object;
+			result.func_name = currToken->text;
 			currToken++;
 			return result;
 		}
