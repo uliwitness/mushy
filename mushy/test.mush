@@ -17,7 +17,7 @@ class integer_variant : variant_type @union variant
 {
 	long long	number;
 	
-	override long long	get_as_number()					{ return number; }
-	override void		set_as_number( long long n )	{ number = n; }
+	override long long	get_as_number()					{ return this.number; }
+	override void		set_as_number( long long n )	{ this.number = n; }
 	
 }

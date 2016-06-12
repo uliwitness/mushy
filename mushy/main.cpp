@@ -297,7 +297,7 @@ public:
 				break;
 			}
 			case field:
-				cout << indent(indentLevel) << func_name;
+				cout << indent(indentLevel) << "@field(" << func_name << ")";
 				break;
 			case variable:
 				cout << indent(indentLevel) << func_name;
@@ -443,16 +443,23 @@ program::program()
 	types["void"] = typedesc("void");
 	
 	binary_operator_priorities["="] = 1000;
-	binary_operator_priorities["&&"] = 2000;
-	binary_operator_priorities["||"] = 3000;
-	binary_operator_priorities["=="] = 4000;
-	binary_operator_priorities["!="] = 4000;
-	binary_operator_priorities["+"] = 5000;
-	binary_operator_priorities["-"] = 5000;
-	binary_operator_priorities["*"] = 6000;
-	binary_operator_priorities["/"] = 6000;
-	binary_operator_priorities["%"] = 6000;
+	binary_operator_priorities["<<"] = 2000;
+	binary_operator_priorities[">>"] = 2000;
+	binary_operator_priorities["&&"] = 3000;
+	binary_operator_priorities["||"] = 4000;
+	binary_operator_priorities["=="] = 5000;
+	binary_operator_priorities["!="] = 5000;
+	binary_operator_priorities["<"] = 5000;
+	binary_operator_priorities[">"] = 5000;
+	binary_operator_priorities["<="] = 5000;
+	binary_operator_priorities[">="] = 5000;
+	binary_operator_priorities["+"] = 6000;
+	binary_operator_priorities["-"] = 6000;
+	binary_operator_priorities["*"] = 7000;
+	binary_operator_priorities["/"] = 7000;
+	binary_operator_priorities["%"] = 7000;
 	binary_operator_priorities["."] = 9000;
+	binary_operator_priorities["->"] = 9000;
 }
 
 void	finish_token( info& ioInfo )
@@ -1137,7 +1144,18 @@ term	parse_expression( vector<token>& tokens, vector<token>::iterator& currToken
 			term	currOp( opName );
 			currOp.kind = term::function_call;
 			currOp.parameters.push_back( rightmost->parameters[1] );
-			currOp.parameters.push_back( parse_term( tokens, currToken, theProgram, currClass, currFunction ) );
+			if( opName == "." || opName == "->" )
+			{
+				if( currToken == tokens.end() || currToken->kind != token::identifier )
+					PE_ERROR("Expected field name after '" << opName << "', found " << PE_TOKEN_NAME);
+				currOp.parameters.push_back( term(currToken->text) );
+				currOp.parameters[1].kind = term::field;
+				currToken++;
+			}
+			else
+			{
+				currOp.parameters.push_back( parse_term( tokens, currToken, theProgram, currClass, currFunction ) );
+			}
 			rightmost->parameters[1] = currOp;
 			rightmost = &rightmost->parameters[1];
 		}
@@ -1146,7 +1164,18 @@ term	parse_expression( vector<token>& tokens, vector<token>::iterator& currToken
 			term	currOp( opName );
 			currOp.kind = term::function_call;
 			currOp.parameters.push_back( *rightmost );
-			currOp.parameters.push_back( parse_term( tokens, currToken, theProgram, currClass, currFunction ) );
+			if( opName == "." || opName == "->" )
+			{
+				if( currToken == tokens.end() || currToken->kind != token::identifier )
+					PE_ERROR("Expected field name after '" << opName << "', found " << PE_TOKEN_NAME);
+				currOp.parameters.push_back( term(currToken->text) );
+				currOp.parameters[1].kind = term::field;
+				currToken++;
+			}
+			else
+			{
+				currOp.parameters.push_back( parse_term( tokens, currToken, theProgram, currClass, currFunction ) );
+			}
 			*rightmost = currOp;
 			rightmost = &rightmost->parameters[1];
 		}
