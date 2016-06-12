@@ -163,15 +163,15 @@ class typedesc : public varfunccontainer
 {
 public:
 	typedesc( string inName = "" ) : type_name(inName) {}
-	typedesc( const typedesc& inOriginal ) : type_name(inOriginal.type_name), union_name(inOriginal.union_name), template_arguments(inOriginal.template_arguments), class_name(inOriginal.class_name), class_template_arguments(inOriginal.class_template_arguments) { variables = inOriginal.variables; function_types = inOriginal.function_types; functions = inOriginal.functions; }
+	typedesc( const typedesc& inOriginal ) : type_name(inOriginal.type_name), union_name(inOriginal.union_name), template_arguments(inOriginal.template_arguments), superclass_name(inOriginal.superclass_name), superclass_template_arguments(inOriginal.superclass_template_arguments) { variables = inOriginal.variables; function_types = inOriginal.function_types; functions = inOriginal.functions; }
 	
 	virtual void	print( size_t indentLevel ) const override;
 	
 	string				type_name;					// Name of this type.
 	string				union_name;					// Name of the union this type belongs to.
 	vector<typedesc>	template_arguments;			// Types for all template arguments.
-	string				class_name;					// Name of the base class for this type.
-	vector<typedesc>	class_template_arguments;	// Types for all template arguments to the base class.
+	string				superclass_name;					// Name of the base class for this type.
+	vector<typedesc>	superclass_template_arguments;	// Types for all template arguments to the base class.
 };
 
 
@@ -193,14 +193,14 @@ void	typedesc::print( size_t indentLevel ) const
 		cout << ">";
 	}
 	
-	if( class_name.length() > 0 )
+	if( superclass_name.length() > 0 )
 	{
-		cout << " : " << class_name;
-		if( class_template_arguments.size() > 0 )
+		cout << " : " << superclass_name;
+		if( superclass_template_arguments.size() > 0 )
 		{
 			cout << "<";
 			bool	isFirst = true;
-			for( auto currArg : class_template_arguments )
+			for( auto currArg : superclass_template_arguments )
 			{
 				if( !isFirst )
 					cout << ", ";
@@ -1225,7 +1225,7 @@ void	parse_top_level_construct( vector<token>& tokens, vector<token>::iterator& 
 
 		classdesc	newClass;
 		newClass.type_name = className;
-		newClass.class_name = baseClassName;
+		newClass.superclass_name = baseClassName;
 		newClass.union_name = unionName;
 
 		if( mayBeDeclaration && currToken != tokens.end() && currToken->kind == token::operator_identifier && currToken->text.compare(";") == 0 )
