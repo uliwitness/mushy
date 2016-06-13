@@ -222,9 +222,9 @@ void	typedesc::print( size_t indentLevel ) const
 class classdesc : public typedesc
 {
 public:
-	classdesc( string inName = "" ) : typedesc(inName) {}
+	classdesc( string inName = "" ) : typedesc(inName), is_struct(false) {}
 	
-	
+	bool	is_struct;
 };
 
 
@@ -906,7 +906,7 @@ void	parse_function_parameters( vector<token>& tokens, vector<token>::iterator& 
 	}
 }
 
-void	parse_var_or_function( vector<token>& tokens, vector<token>::iterator& currToken, program& theProgram, varfunccontainer& container, classdesc& currClass, bool isOverride )
+void	parse_var_or_function( vector<token>& tokens, vector<token>::iterator& currToken, program& theProgram, varfunccontainer& container, classdesc& currClass, bool isOverride, bool mayParseFunctions )
 {
 	typedesc	theType = parse_type( tokens, currToken,  theProgram );
 	
@@ -1266,6 +1266,8 @@ void	parse_top_level_construct( vector<token>& tokens, vector<token>::iterator& 
 	if( currToken->kind == token::identifier && (currToken->text.compare("class") == 0
 												|| currToken->text.compare("struct") == 0) )
 	{
+		bool	isStruct = currToken->text.compare("struct") == 0;
+		
 		currToken++;
 		
 		if( currToken->kind != token::identifier )
@@ -1279,7 +1281,7 @@ void	parse_top_level_construct( vector<token>& tokens, vector<token>::iterator& 
 		
 		currToken++;
 		
-		if( currToken->kind == token::operator_identifier && currToken->text.compare(":") == 0 )
+		if( !isStruct && currToken->kind == token::operator_identifier && currToken->text.compare(":") == 0 )
 		{
 			currToken++;
 			
@@ -1292,7 +1294,7 @@ void	parse_top_level_construct( vector<token>& tokens, vector<token>::iterator& 
 			
 			mayBeDeclaration = false;
 		}
-		if( currToken->kind == token::identifier && currToken->text.compare("@union") == 0 )
+		if( !isStruct && currToken->kind == token::identifier && currToken->text.compare("@union") == 0 )
 		{
 			currToken++;
 			
@@ -1308,7 +1310,7 @@ void	parse_top_level_construct( vector<token>& tokens, vector<token>::iterator& 
 
 		classdesc	newClass;
 		newClass.type_name = className;
-		newClass.superclass_name = baseClassName;
+		newClass.superclass_name = isStruct ? "" : baseClassName;
 		newClass.union_name = unionName;
 
 		if( mayBeDeclaration && currToken != tokens.end() && currToken->kind == token::operator_identifier && currToken->text.compare(";") == 0 )
@@ -1326,14 +1328,14 @@ void	parse_top_level_construct( vector<token>& tokens, vector<token>::iterator& 
 					break;
 				
 				bool	isOverride = false;
-				if( currToken->kind == token::identifier && currToken->text.compare("override") == 0 )
+				if( !isStruct && currToken->kind == token::identifier && currToken->text.compare("override") == 0 )
 				{
 					currToken++;
 					if( currToken == tokens.end() )
 						PE_ERROR( "Expected method declaration or definition after 'override', found " << PE_TOKEN_NAME );
 					isOverride = true;
 				}
-				parse_var_or_function( tokens, currToken, theProgram, newClass, newClass, isOverride );
+				parse_var_or_function( tokens, currToken, theProgram, newClass, newClass, isOverride, !isStruct );
 			}
 			
 			if( currToken == tokens.end() || currToken->kind != token::operator_identifier || currToken->text.compare("}") != 0 )
@@ -1357,7 +1359,7 @@ void	parse_top_level_construct( vector<token>& tokens, vector<token>::iterator& 
 	else
 	{
 		classdesc	dummy_class("__dummy_class");
-		parse_var_or_function( tokens, currToken, theProgram, theProgram, dummy_class, false );
+		parse_var_or_function( tokens, currToken, theProgram, theProgram, dummy_class, false, true );
 	}
 }
 
