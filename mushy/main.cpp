@@ -1260,6 +1260,58 @@ void	parse_function_body( vector<token>& tokens, vector<token>::iterator& currTo
 }
 
 
+void	validate_class( program& theProgram, classdesc& newClass )
+{
+	for( auto currMethod : newClass.functions )
+	{
+		classdesc currClass = newClass;
+		while( true )
+		{
+			if( currClass.superclass_name.length() > 0 )
+			{
+				// +++ Validate that no function has "override" set if we're still at bottom level.
+				break;	// Done, hit a root class.
+			}
+			auto foundSuperclass = theProgram.classes.find( currClass.superclass_name );
+			if( foundSuperclass == theProgram.classes.end() )
+			{
+				parse_error err;
+				err.err_msg << "Class '" << currClass.type_name << "' has unknown superclass '" << currClass.superclass_name << "'";
+				throw err;
+			}
+		
+			auto	foundFunc = foundSuperclass->second.functions.find( currMethod.second.func_name );
+			if( foundFunc != foundSuperclass->second.functions.end() )
+			{
+				const vector<vardesc>&			foundFuncParams = foundFunc->second.param_types;
+				vector<vardesc>::const_iterator	currFoundParam = foundFuncParams.begin();
+				for( auto currParam : currMethod.second.param_types )
+				{
+					if( currFoundParam == foundFuncParams.end() )
+					{
+						parse_error err;
+						err.err_msg << currClass.type_name << "::" << foundFunc->second.func_name << "'s parameter count doesn't match the one defined in " << foundSuperclass->second.type_name;
+						throw err;
+					}
+					
+					if( currParam.type_name != currFoundParam->type_name )
+					{
+						parse_error err;
+						err.err_msg << currClass.type_name << "::" << foundFunc->second.func_name << "'s parameters don't match the one defined in " << foundSuperclass->second.type_name<< ". Expected an " << currFoundParam->type_name << ", found a " << currParam.type_name;
+						throw err;
+					}
+					
+					currFoundParam++;
+				}
+				
+			}
+			
+			// Go on to next class:
+			currClass = foundSuperclass->second;
+		}
+	}
+}
+
 
 void	parse_top_level_construct( vector<token>& tokens, vector<token>::iterator& currToken, program& theProgram )
 {
@@ -1355,6 +1407,8 @@ void	parse_top_level_construct( vector<token>& tokens, vector<token>::iterator& 
 			theProgram.classes[className] = newClass;
 		}
 		theProgram.types[className] = newClass;
+		
+		validate_class( theProgram, newClass );
 	}
 	else
 	{
