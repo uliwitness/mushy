@@ -1279,10 +1279,20 @@ void	validate_class( program& theProgram, classdesc& newClass )
 				err.err_msg << "Class '" << currClass.type_name << "' has unknown superclass '" << currClass.superclass_name << "'";
 				throw err;
 			}
+			
+			// +++ code below should also check that all pure virtual methods are implemented.
 		
 			auto	foundFunc = foundSuperclass->second.functions.find( currMethod.second.func_name );
 			if( foundFunc != foundSuperclass->second.functions.end() )
 			{
+				
+				if( !currMethod.second.is_override )
+				{
+					parse_error err;
+					err.err_msg << currClass.type_name << "::" << foundFunc->second.func_name << " has same name as method in class '" << foundSuperclass->second.type_name << "', but is not marked as override.";
+					throw err;
+				}
+
 				const vector<vardesc>&			foundFuncParams = foundFunc->second.param_types;
 				vector<vardesc>::const_iterator	currFoundParam = foundFuncParams.begin();
 				for( auto currParam : currMethod.second.param_types )
@@ -1303,7 +1313,6 @@ void	validate_class( program& theProgram, classdesc& newClass )
 					
 					currFoundParam++;
 				}
-				
 			}
 			
 			// Go on to next class:
