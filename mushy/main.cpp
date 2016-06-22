@@ -162,8 +162,10 @@ public:
 class typedesc : public varfunccontainer
 {
 public:
-	typedesc( string inName = "" ) : type_name(inName) {}
-	typedesc( const typedesc& inOriginal ) : type_name(inOriginal.type_name), union_name(inOriginal.union_name), template_arguments(inOriginal.template_arguments), superclass_name(inOriginal.superclass_name), superclass_template_arguments(inOriginal.superclass_template_arguments) { variables = inOriginal.variables; function_types = inOriginal.function_types; functions = inOriginal.functions; }
+	typedesc( string inName = "" ) : type_name(inName), is_struct(true), number_of_superclasses(0) {}
+	typedesc( const typedesc& inOriginal ) : type_name(inOriginal.type_name), union_name(inOriginal.union_name), template_arguments(inOriginal.template_arguments), superclass_name(inOriginal.superclass_name), superclass_template_arguments(inOriginal.superclass_template_arguments), is_struct(inOriginal.is_struct), number_of_superclasses(inOriginal.number_of_superclasses) { variables = inOriginal.variables; function_types = inOriginal.function_types; functions = inOriginal.functions; }
+	
+	funcdesc		find_function( const program& theProgram, const string& name, string& outClassName ) const;
 	
 	virtual void	print( size_t indentLevel ) const override;
 	
@@ -172,6 +174,8 @@ public:
 	vector<typedesc>	template_arguments;			// Types for all template arguments.
 	string				superclass_name;					// Name of the base class for this type.
 	vector<typedesc>	superclass_template_arguments;	// Types for all template arguments to the base class.
+	size_t				number_of_superclasses;
+	bool				is_struct;
 };
 
 
@@ -210,6 +214,8 @@ void	typedesc::print( size_t indentLevel ) const
 			}
 			cout << ">";
 		}
+		
+		cout << " (" << number_of_superclasses << ")";
 	}
 	if( union_name.size() > 0 )
 		cout << " @union " << union_name;
@@ -222,9 +228,7 @@ void	typedesc::print( size_t indentLevel ) const
 class classdesc : public typedesc
 {
 public:
-	classdesc( string inName = "" ) : typedesc(inName), is_struct(false) {}
-	
-	bool	is_struct;
+	classdesc( string inName = "" ) : typedesc(inName) {}
 };
 
 
@@ -385,6 +389,32 @@ public:
 };
 
 
+funcdesc	typedesc::find_function( const program& theProgram, const string& name, string& outClassName ) const
+{
+	auto	foundFunc = functions.find( name );
+	if( foundFunc != functions.end() )
+	{
+		outClassName = type_name;
+		return foundFunc->second;
+	}
+	
+	if( superclass_name.length() > 0 )
+	{
+		auto	foundClass = theProgram.classes.find( superclass_name );
+		if( foundClass != theProgram.classes.end() && !foundClass->second.is_struct )
+			foundClass->second.find_function( theProgram, name, outClassName );
+		
+		auto	foundType = theProgram.types.find( superclass_name );
+		if( foundType != theProgram.types.end() && !foundType->second.is_struct )
+		{
+			foundType->second.find_function( theProgram, name, outClassName );
+		}
+	}
+	
+	return funcdesc();
+}
+
+
 void	program::print( size_t indentLevel ) const
 {
 	varfunccontainer::print( indentLevel );
@@ -445,6 +475,8 @@ program::program()
 	types["int8_t"] = typedesc("int8_t");
 	types["uint8_t"] = typedesc("uint8_t");
 	types["void"] = typedesc("void");
+	types["object"] = typedesc("object");
+	classes["object"] = classdesc("object");
 	
 	binary_operator_priorities["="] = 1000;
 	binary_operator_priorities["<<"] = 2000;
@@ -1262,61 +1294,77 @@ void	parse_function_body( vector<token>& tokens, vector<token>::iterator& currTo
 
 void	validate_class( program& theProgram, classdesc& newClass )
 {
+	classdesc	superclass;
+	bool		hasSuperClass = (newClass.superclass_name.length() > 0);
+	if( hasSuperClass )
+	{
+		map<string,classdesc>::iterator foundSuperclass = theProgram.classes.find( newClass.superclass_name );
+		if( foundSuperclass == theProgram.classes.end() )
+		{
+			parse_error err;
+			err.err_msg << "Class '" << newClass.type_name << "' has unknown superclass '" << newClass.superclass_name << "'";
+			throw err;
+		}
+		
+		if( foundSuperclass->second.number_of_superclasses == 0 && foundSuperclass->second.superclass_name.size() > 0 )
+			validate_class( theProgram, foundSuperclass->second );
+		superclass = foundSuperclass->second;
+		
+		newClass.number_of_superclasses = superclass.number_of_superclasses +1;
+	}
+
 	for( auto currMethod : newClass.functions )
 	{
-		classdesc currClass = newClass;
-		while( true )
+		if( hasSuperClass )
 		{
-			if( currClass.superclass_name.length() > 0 )
-			{
-				// +++ Validate that no function has "override" set if we're still at bottom level.
-				break;	// Done, hit a root class.
-			}
-			auto foundSuperclass = theProgram.classes.find( currClass.superclass_name );
-			if( foundSuperclass == theProgram.classes.end() )
+			string		className;
+			funcdesc	originalFunction = superclass.find_function( theProgram, currMethod.second.func_name, className );
+			bool		foundOriginal = (originalFunction.func_name == currMethod.second.func_name);
+			if( !foundOriginal && currMethod.second.is_override )
 			{
 				parse_error err;
-				err.err_msg << "Class '" << currClass.type_name << "' has unknown superclass '" << currClass.superclass_name << "'";
+				err.err_msg << newClass.type_name << "::" << currMethod.second.func_name << " is declared as an override, but there is no method to override in its superclasses.";
+				throw err;
+			}
+			if( foundOriginal && !currMethod.second.is_override )
+			{
+				parse_error err;
+				err.err_msg << newClass.type_name << "::" << currMethod.second.func_name << " hides method inherited from " << className << ". Did you mean to mark it as 'override'?";
 				throw err;
 			}
 			
-			// +++ code below should also check that all pure virtual methods are implemented.
-		
-			auto	foundFunc = foundSuperclass->second.functions.find( currMethod.second.func_name );
-			if( foundFunc != foundSuperclass->second.functions.end() )
+			if( foundOriginal )
 			{
-				
-				if( !currMethod.second.is_override )
-				{
-					parse_error err;
-					err.err_msg << currClass.type_name << "::" << foundFunc->second.func_name << " has same name as method in class '" << foundSuperclass->second.type_name << "', but is not marked as override.";
-					throw err;
-				}
-
-				const vector<vardesc>&			foundFuncParams = foundFunc->second.param_types;
+				const vector<vardesc>&			foundFuncParams = originalFunction.param_types;
 				vector<vardesc>::const_iterator	currFoundParam = foundFuncParams.begin();
 				for( auto currParam : currMethod.second.param_types )
 				{
 					if( currFoundParam == foundFuncParams.end() )
 					{
 						parse_error err;
-						err.err_msg << currClass.type_name << "::" << foundFunc->second.func_name << "'s parameter count doesn't match the one defined in " << foundSuperclass->second.type_name;
+						err.err_msg << newClass.type_name << "::" << originalFunction.func_name << "'s parameter count doesn't match the one defined in " << className;
 						throw err;
 					}
 					
 					if( currParam.type_name != currFoundParam->type_name )
 					{
 						parse_error err;
-						err.err_msg << currClass.type_name << "::" << foundFunc->second.func_name << "'s parameters don't match the one defined in " << foundSuperclass->second.type_name<< ". Expected an " << currFoundParam->type_name << ", found a " << currParam.type_name;
+						err.err_msg << newClass.type_name << "::" << originalFunction.func_name << "'s parameters don't match the one defined in " << className << ". Expected an " << currFoundParam->type_name << ", found a " << currParam.type_name;
 						throw err;
 					}
 					
 					currFoundParam++;
 				}
 			}
-			
-			// Go on to next class:
-			currClass = foundSuperclass->second;
+		}
+		else
+		{
+			if( currMethod.second.is_override )
+			{
+				parse_error err;
+				err.err_msg << newClass.type_name << "::" << currMethod.second.func_name << " is declared as an override, but there is no base class.";
+				throw err;
+			}
 		}
 	}
 }
@@ -1409,20 +1457,66 @@ void	parse_top_level_construct( vector<token>& tokens, vector<token>::iterator& 
 			throw runtime_error( "This class declaration/definition is incomplete." );
 		}
 		
+		validate_class( theProgram, newClass );
+
 		if( !isDeclaration )
 		{
 			if( theProgram.classes.find(className) != theProgram.classes.end() )
 				PE_ERROR( "A class named '" << className << "' already exists" );
 			theProgram.classes[className] = newClass;
 		}
-		theProgram.types[className] = newClass;
 		
-		validate_class( theProgram, newClass );
+		theProgram.types[className] = newClass;
 	}
 	else
 	{
 		classdesc	dummy_class("__dummy_class");
 		parse_var_or_function( tokens, currToken, theProgram, theProgram, dummy_class, false, true );
+	}
+}
+
+
+void	generate_classes( program& theProgram )
+{
+	vector<classdesc>	sortedClasses;
+    transform( theProgram.classes.begin(), theProgram.classes.end(), std::back_inserter( sortedClasses ), [](map<string,classdesc>::value_type m){return m.second;} );
+	sort( sortedClasses.begin(), sortedClasses.end(), []( const classdesc& a, const classdesc& b ){ return a.number_of_superclasses < b.number_of_superclasses; });
+
+	for( auto currClass : sortedClasses )
+	{
+		cout << "struct " << currClass.type_name << "___isa" << endl
+			<< "{" << endl;
+		if( currClass.superclass_name.size() > 0 )
+			cout << "	struct " << currClass.superclass_name << "___isa	base;" << endl;
+		else
+			cout << "	void	(*dealloc)( " << currClass.type_name << " *this );" << endl;
+		for( auto currFunc : currClass.functions )
+		{
+			if( !currFunc.second.is_override )
+			{
+				cout << "	" << currFunc.second.return_type.type_name << "	(*" << currFunc.second.func_name << ")( struct " << currClass.type_name << " *this";
+				for( auto currParam : currFunc.second.param_types )
+				{
+					cout << ", " << currParam.type_name << " " << currParam.var_name;
+				}
+				cout << " );" << endl;
+			}
+		}
+		cout << "};" << endl
+			<< endl;
+		
+		cout << "struct " << currClass.type_name << endl
+			<< "{" << endl;
+		if( currClass.superclass_name.size() > 0 )
+			cout << "	struct " << currClass.superclass_name << "	base;" << endl;
+		else
+			cout << "	struct " << currClass.type_name << "___isa*	vtable;" << endl;
+		for( auto currVar : currClass.variables )
+		{
+			cout << "	" << currVar.second.type_name << "	" << currVar.second.var_name << ";" << endl;
+		}
+		cout << "};" << endl
+			<< endl;
 	}
 }
 
@@ -1443,6 +1537,8 @@ int main( int argc, const char * argv[] )
 		{
 			parse_top_level_construct( tokens, currToken, theProgram );
 		}
+		
+		generate_classes( theProgram );
 	}
 	catch( const parse_error& err )
 	{
