@@ -166,7 +166,7 @@ public:
 	typedesc( const typedesc& inOriginal ) : type_name(inOriginal.type_name), union_name(inOriginal.union_name), template_arguments(inOriginal.template_arguments), superclass_name(inOriginal.superclass_name), superclass_template_arguments(inOriginal.superclass_template_arguments), is_struct(inOriginal.is_struct), number_of_superclasses(inOriginal.number_of_superclasses) { variables = inOriginal.variables; function_types = inOriginal.function_types; functions = inOriginal.functions; }
 	
 	funcdesc		find_function( const program& theProgram, const string& name, string& outClassName ) const;
-	
+	size_t			find_override_depth_for_function( const program& theProgram, const string& name ) const;
 	virtual void	print( size_t indentLevel ) const override;
 	
 	string				type_name;					// Name of this type.
@@ -412,6 +412,26 @@ funcdesc	typedesc::find_function( const program& theProgram, const string& name,
 	}
 	
 	return funcdesc();
+}
+
+
+size_t	typedesc::find_override_depth_for_function( const program& theProgram, const string& name ) const
+{
+	auto	foundFunc = functions.find( name );
+	if( foundFunc != functions.end() )
+	{
+		if( !foundFunc->second.is_override )	// This one is topmost!
+			return 0;
+	}
+	
+	if( superclass_name.length() > 0 )
+	{
+		auto	foundClass = theProgram.classes.find( superclass_name );
+		if( foundClass != theProgram.classes.end() && !foundClass->second.is_struct )
+			return foundClass->second.find_override_depth_for_function( theProgram, name ) +1;
+	}
+	
+	return 1;
 }
 
 
@@ -1517,6 +1537,31 @@ void	generate_classes( program& theProgram )
 		}
 		cout << "};" << endl
 			<< endl;
+		
+		cout << "struct " << currClass.type_name << "___isa g___isa___" << currClass.type_name << " = {};" << endl
+			<< endl;
+		
+		if( currClass.superclass_name.size() == 0 )
+		{
+			cout << "void " << currClass.type_name << "___dealloc( struct " << currClass.type_name << "* this )" << endl << "{" << endl << "	" << endl << "}" << endl << endl;
+		}
+		
+		cout << "void init_class___" << currClass.type_name << "( " << currClass.type_name << "___isa* dest )" << endl
+			<< "{" << endl;
+		if( currClass.superclass_name.size() > 0 )
+			cout << "	init_class___" << currClass.superclass_name << "( &(dest->base) );" << endl;
+		else
+			cout << "	dest->dealloc = " << currClass.type_name << "___dealloc;" << endl;
+		
+		for( auto currFunc : currClass.functions )
+		{
+			cout << "	" << "dest->";
+			size_t	numLevels = currClass.find_override_depth_for_function( theProgram, currFunc.second.func_name );
+			for( size_t x = 0; x < numLevels; x++ )
+				cout << "base.";
+			cout << currFunc.second.func_name << " = " << currClass.type_name << "___" << currFunc.second.func_name << ";" << endl;
+		}
+		cout << "}" << endl << endl;
 	}
 }
 
