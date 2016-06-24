@@ -496,7 +496,11 @@ program::program()
 	types["uint8_t"] = typedesc("uint8_t");
 	types["void"] = typedesc("void");
 	types["object"] = typedesc("object");
-	classes["object"] = classdesc("object");
+	classdesc	objClass("object");
+	funcdesc	deallocFunc("dealloc");
+	deallocFunc.return_type = typedesc("void");
+	objClass.functions["dealloc"] = deallocFunc;
+	classes["object"] = objClass;
 	
 	binary_operator_priorities["="] = 1000;
 	binary_operator_priorities["<<"] = 2000;
@@ -1508,8 +1512,6 @@ void	generate_classes( program& theProgram )
 			<< "{" << endl;
 		if( currClass.superclass_name.size() > 0 )
 			cout << "	struct " << currClass.superclass_name << "___isa	base;" << endl;
-		else
-			cout << "	void	(*dealloc)( " << currClass.type_name << " *this );" << endl;
 		for( auto currFunc : currClass.functions )
 		{
 			if( !currFunc.second.is_override )
@@ -1541,17 +1543,10 @@ void	generate_classes( program& theProgram )
 		cout << "struct " << currClass.type_name << "___isa g___isa___" << currClass.type_name << " = {};" << endl
 			<< endl;
 		
-		if( currClass.superclass_name.size() == 0 )
-		{
-			cout << "void " << currClass.type_name << "___dealloc( struct " << currClass.type_name << "* this )" << endl << "{" << endl << "	" << endl << "}" << endl << endl;
-		}
-		
 		cout << "void init_class___" << currClass.type_name << "( " << currClass.type_name << "___isa* dest )" << endl
 			<< "{" << endl;
 		if( currClass.superclass_name.size() > 0 )
 			cout << "	init_class___" << currClass.superclass_name << "( &(dest->base) );" << endl;
-		else
-			cout << "	dest->dealloc = " << currClass.type_name << "___dealloc;" << endl;
 		
 		for( auto currFunc : currClass.functions )
 		{
@@ -1563,6 +1558,13 @@ void	generate_classes( program& theProgram )
 		}
 		cout << "}" << endl << endl;
 	}
+	
+	cout << "void	init___all___classes( void )" << endl << "{" << endl;
+	for( auto currClass : sortedClasses )
+	{
+		cout << "	init_class___" << currClass.type_name << "( &g___isa___" << currClass.type_name << " );" << endl;
+	}
+	cout << "}" << endl;
 }
 
 
