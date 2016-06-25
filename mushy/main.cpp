@@ -457,7 +457,7 @@ void	varcontainer::print( size_t indentLevel ) const
 	if( variables.size() > 0 )
 	{
 		cout << indent(indentLevel) << "VARIABLES:" << endl;
-		for( auto currVar : variables )
+		for( const std::pair<string,vardesc>& currVar : variables )
 		{
 			currVar.second.print(indentLevel +1);
 			cout << endl;
@@ -1289,6 +1289,16 @@ void	parse_function_body( vector<token>& tokens, vector<token>::iterator& currTo
 				if( currToken->text == ";" )
 				{
 					currToken++;
+				
+					if( !theType.is_struct )
+					{
+						term	assignmentStmt(".");
+						assignmentStmt.parameters.push_back( term(varName) );
+						assignmentStmt.parameters[0].kind = term::variable;
+						term	funcCall("init");
+						assignmentStmt.parameters.push_back( funcCall );
+						currFunction.commands.push_back( assignmentStmt );
+					}
 					continue;
 				}
 				if( currToken->text != "=" )
@@ -1444,6 +1454,7 @@ void	parse_top_level_construct( vector<token>& tokens, vector<token>::iterator& 
 		classdesc	newClass;
 		newClass.type_name = className;
 		newClass.superclass_name = isStruct ? "" : baseClassName;
+		newClass.is_struct = isStruct;
 		newClass.union_name = unionName;
 
 		if( mayBeDeclaration && currToken != tokens.end() && currToken->kind == token::operator_identifier && currToken->text.compare(";") == 0 )
@@ -1564,7 +1575,7 @@ void	generate_classes( program& theProgram )
 	{
 		cout << "	init_class___" << currClass.type_name << "( &g___isa___" << currClass.type_name << " );" << endl;
 	}
-	cout << "}" << endl;
+	cout << "}" << endl << endl;
 }
 
 
